@@ -1,28 +1,32 @@
-# CPE - Cryptographic Prompt Envelope
+# CPE (Cryptographic Prompt Envelope)
 
-> **Envoltorio Criptográfico de Prompts** - Tercera capa del protocolo AI-PIP
+> **Cryptographic Prompt Envelope** — Third layer of the AI-PIP protocol. Builds a cryptographic envelope that guarantees the integrity and authenticity of the prompt processed by previous layers.
 
-## 📋 Descripción General
+---
 
-La **Cryptographic Prompt Envelope (CPE)** es la tercera capa del protocolo AI-PIP. Su función principal es generar un envoltorio criptográfico que garantiza la integridad y autenticidad del prompt procesado por las capas anteriores.
+## 1. Overview
 
-### Principios Fundamentales
+The **Cryptographic Prompt Envelope (CPE)** is the third layer of the AI-PIP protocol. Its main function is to produce a cryptographic envelope that guarantees the integrity and authenticity of the prompt processed by the previous layers.
 
-- **Integridad Criptográfica**: Firma HMAC-SHA256 del contenido
-- **No Repudio**: Timestamp y nonce únicos
-- **Trazabilidad Completa**: Linaje completo preservado
-- **Metadata de Seguridad**: Información de auditoría
+### 1.1 Principles
 
-## 🎯 Funcionalidades Principales
+- **Cryptographic integrity**: HMAC-SHA256 signature of the content
+- **Non-repudiation**: Unique timestamp and nonce
+- **Full traceability**: Complete lineage preserved
+- **Security metadata**: Audit information
 
-### 1. Generación de Metadata de Seguridad
+---
 
-CPE genera metadata que incluye:
+## 2. Main Functionality
 
-- **Timestamp**: Momento de creación del envelope
-- **Nonce**: Valor único para prevenir ataques de replay
-- **Protocol Version**: Versión del protocolo AI-PIP
-- **Previous Signatures**: Firmas opcionales de capas anteriores (CSL, ISL)
+### 2.1 Security Metadata Generation
+
+CPE generates metadata that includes:
+
+- **Timestamp**: Envelope creation time
+- **Nonce**: Unique value to prevent replay attacks
+- **Protocol Version**: AI-PIP protocol version
+- **Previous Signatures**: Optional signatures from previous layers (CSL, ISL)
 
 ```typescript
 import { createMetadata, CURRENT_PROTOCOL_VERSION } from '@ai-pip/core/cpe'
@@ -32,26 +36,26 @@ const metadata = createMetadata(
   nonce,
   CURRENT_PROTOCOL_VERSION,
   {
-    csl: 'csl-signature-123',  // Opcional
-    isl: 'isl-signature-456'   // Opcional
+    csl: 'csl-signature-123',  // Optional
+    isl: 'isl-signature-456'   // Optional
   }
 )
 ```
 
-### 2. Firma Criptográfica HMAC-SHA256
+### 2.2 HMAC-SHA256 Cryptographic Signature
 
-CPE genera una firma criptográfica del contenido usando HMAC-SHA256:
+CPE produces a cryptographic signature of the content using HMAC-SHA256:
 
 ```typescript
 import { createSignature, verifySignature } from '@ai-pip/core/cpe'
 
-// Generar firma
+// Generate signature
 const signature = createSignature(
   signableContent,
   secretKey
 )
 
-// Verificar firma
+// Verify signature
 const isValid = verifySignature(
   content,
   signature.value,
@@ -59,73 +63,75 @@ const isValid = verifySignature(
 )
 ```
 
-### 3. Construcción del Envelope
+### 2.3 Envelope Construction
 
-CPE construye el envelope criptográfico completo:
+CPE builds the full cryptographic envelope:
 
 ```typescript
 import { envelope } from '@ai-pip/core/cpe'
 
 const cpeResult = envelope(islResult, secretKey)
 
-// cpeResult.envelope contiene:
-// - payload: contenido procesado (semántico)
-// - metadata: metadata de seguridad
-// - signature: firma criptográfica
-// - lineage: linaje completo
+// cpeResult.envelope contains:
+// - payload: processed content (semantic)
+// - metadata: security metadata
+// - signature: cryptographic signature
+// - lineage: full lineage
 ```
 
-## 📦 Componentes
+---
 
-### Funciones Principales
+## 3. Components
 
-#### Generación de Envelope
-- **`envelope(islResult: ISLResult, secretKey: string): CPEResult`** - Función principal de generación de envelope. Crea el envoltorio criptográfico completo con metadata, firma y linaje.
+### 3.1 Main Functions
 
-### Value Objects
+#### Envelope Generation
+- **`envelope(islResult: ISLResult, secretKey: string): CPEResult`** — Main envelope generation function. Creates the full cryptographic envelope with metadata, signature, and lineage.
+
+### 3.2 Value Objects
 
 #### Nonce
-- **Tipo**: `Nonce` - Valor único para prevenir ataques de replay
-- **Propiedades**:
-  - `value: string` - Valor hexadecimal del nonce
-- **Creación**: `createNonce(length?: number): Nonce` - Genera un nonce único (longitud por defecto: 16 bytes, mínimo: 8, máximo: 64)
-- **Utilidades**:
-  - `isValidNonce(value: string): boolean` - Valida que un string sea un nonce válido (16-128 caracteres hex)
-  - `equalsNonce(nonce1: Nonce, nonce2: Nonce): boolean` - Compara dos nonces
+- **Type**: `Nonce` — Unique value to prevent replay attacks
+- **Properties**:
+  - `value: string` — Hexadecimal nonce value
+- **Creation**: `createNonce(length?: number): Nonce` — Generates a unique nonce (default length: 16 bytes, min: 8, max: 64)
+- **Helpers**:
+  - `isValidNonce(value: string): boolean` — Validates that a string is a valid nonce (16–128 hex characters)
+  - `equalsNonce(nonce1: Nonce, nonce2: Nonce): boolean` — Compares two nonces
 
 #### Metadata
-- **Tipo**: `CPEMetadata` - Metadata de seguridad del envelope inmutable
-- **Propiedades**:
-  - `timestamp: Timestamp` - Timestamp Unix en milisegundos
-  - `nonce: NonceValue` - Valor del nonce (string)
-  - `protocolVersion: ProtocolVersion` - Versión del protocolo
-  - `previousSignatures?: { csl?: string; isl?: string }` - Firmas opcionales de capas anteriores
-- **Constante**: `CURRENT_PROTOCOL_VERSION: ProtocolVersion = '0.1.4'` - Versión actual del protocolo
-- **Creación**: `createMetadata(timestamp, nonce, protocolVersion?, previousSignatures?): CPEMetadata`
-- **Utilidades**:
-  - `isValidMetadata(metadata: CPEMetadata): boolean` - Valida que la metadata sea válida
+- **Type**: `CPEMetadata` — Immutable envelope security metadata
+- **Properties**:
+  - `timestamp: Timestamp` — Unix timestamp in milliseconds
+  - `nonce: NonceValue` — Nonce value (string)
+  - `protocolVersion: ProtocolVersion` — Protocol version
+  - `previousSignatures?: { csl?: string; isl?: string }` — Optional signatures from previous layers
+- **Constant**: `CURRENT_PROTOCOL_VERSION: ProtocolVersion = '0.1.4'` — Current protocol version
+- **Creation**: `createMetadata(timestamp, nonce, protocolVersion?, previousSignatures?): CPEMetadata`
+- **Helpers**:
+  - `isValidMetadata(metadata: CPEMetadata): boolean` — Validates that metadata is valid
 
 #### Signature
-- **Tipo**: `SignatureVO` - Firma criptográfica inmutable
-- **Propiedades**:
-  - `value: string` - Valor hexadecimal de la firma (64 caracteres para HMAC-SHA256)
-  - `algorithm: SignatureAlgorithm` - Algoritmo usado ('HMAC-SHA256')
-- **Creación**: `createSignature(content: string, secretKey: string): SignatureVO` - Genera firma HMAC-SHA256
-- **Utilidades**:
-  - `verifySignature(content: string, signature: string, secretKey: string): boolean` - Verifica una firma
-  - `isValidSignatureFormat(signature: string): boolean` - Valida el formato de una firma (64 caracteres hex)
+- **Type**: `SignatureVO` — Immutable cryptographic signature
+- **Properties**:
+  - `value: string` — Hexadecimal signature value (64 characters for HMAC-SHA256)
+  - `algorithm: SignatureAlgorithm` — Algorithm used ('HMAC-SHA256')
+- **Creation**: `createSignature(content: string, secretKey: string): SignatureVO` — Generates HMAC-SHA256 signature
+- **Helpers**:
+  - `verifySignature(content: string, signature: string, secretKey: string): boolean` — Verifies a signature
+  - `isValidSignatureFormat(signature: string): boolean` — Validates signature format (64 hex characters)
 
-### Tipos
+### 3.3 Types
 
-#### Tipos Básicos
-- **`ProtocolVersion`** - Versión del protocolo: `string`
-- **`Timestamp`** - Timestamp Unix en milisegundos: `number`
-- **`NonceValue`** - Valor del nonce: `string`
-- **`SignatureAlgorithm`** - Algoritmo de firma: `'HMAC-SHA256'`
-- **`Signature`** - Valor de la firma: `string`
+#### Basic Types
+- **`ProtocolVersion`** — Protocol version: `string`
+- **`Timestamp`** — Unix timestamp in milliseconds: `number`
+- **`NonceValue`** — Nonce value: `string`
+- **`SignatureAlgorithm`** — Signature algorithm: `'HMAC-SHA256'`
+- **`Signature`** — Signature value: `string`
 
 #### Interfaces
-- **`CPEMetadata`** - Metadata de seguridad:
+- **`CPEMetadata`** — Security metadata:
   ```typescript
   {
     timestamp: Timestamp
@@ -138,7 +144,7 @@ const cpeResult = envelope(islResult, secretKey)
   }
   ```
 
-- **`CPEEvelope`** - Envoltorio criptográfico completo:
+- **`CPEEnvelope`** — Full cryptographic envelope:
   ```typescript
   {
     payload: {
@@ -155,46 +161,52 @@ const cpeResult = envelope(islResult, secretKey)
   }
   ```
 
-- **`CPEResult`** - Resultado de generación del envelope:
+- **`CPEResult`** — Envelope generation result:
   ```typescript
   {
-    envelope: CPEEvelope
+    envelope: CPEEnvelope
     processingTimeMs?: number
   }
   ```
 
-### Excepciones
+### 3.4 Exceptions
 
-- **`EnvelopeError`** - Lanzada cuando la generación del envelope falla (clave secreta inválida, metadata inválida, etc.)
+- **`EnvelopeError`** — Thrown when envelope generation fails (invalid secret key, invalid metadata, etc.)
 
-## 🔄 Flujo de Procesamiento
+---
+
+## 4. Processing Flow
 
 ```
-ISLResult (contenido sanitizado)
+ISLResult (sanitized content)
     ↓
-Generar metadata (timestamp, nonce, versión)
+Generate metadata (timestamp, nonce, version)
     ↓
-Preparar payload semántico
+Prepare semantic payload
     ↓
-Generar firma HMAC-SHA256
+Generate HMAC-SHA256 signature
     ↓
-Actualizar linaje con entrada CPE
+Update lineage with CPE entry
     ↓
-Construir envelope criptográfico
+Build cryptographic envelope
     ↓
 CPEResult (envelope + metadata)
 ```
 
-## ✅ Garantías
+---
 
-1. **Integridad**: Firma criptográfica garantiza integridad del contenido
-2. **Autenticidad**: HMAC-SHA256 con clave secreta garantiza autenticidad
-3. **No Repudio**: Timestamp y nonce únicos previenen replay attacks
-4. **Trazabilidad**: Linaje completo preservado para auditoría
+## 5. Guarantees
 
-## 📝 Ejemplos de Uso
+1. **Integrity**: Cryptographic signature guarantees content integrity
+2. **Authenticity**: HMAC-SHA256 with secret key guarantees authenticity
+3. **Non-repudiation**: Unique timestamp and nonce prevent replay attacks
+4. **Traceability**: Full lineage preserved for audit
 
-### Ejemplo Básico: Generación de Envelope
+---
+
+## 6. Usage Examples
+
+### 6.1 Basic envelope generation
 
 ```typescript
 import { envelope } from '@ai-pip/core'
@@ -202,7 +214,7 @@ import { sanitize } from '@ai-pip/core'
 import { segment } from '@ai-pip/core'
 import type { CPEResult } from '@ai-pip/core'
 
-// 1. Procesar contenido a través de CSL e ISL
+// 1. Process content through CSL and ISL
 const cslResult = segment({
   content: 'User input here',
   source: 'UI',
@@ -210,18 +222,18 @@ const cslResult = segment({
 })
 const islResult = sanitize(cslResult)
 
-// 2. Generar envelope criptográfico
-const secretKey = 'your-secret-key' // Debe ser proporcionado por el SDK
+// 2. Generate cryptographic envelope
+const secretKey = 'your-secret-key' // Must be provided by the SDK
 const cpeResult: CPEResult = envelope(islResult, secretKey)
 
-// cpeResult.envelope contiene:
-// - payload: segmentos procesados
+// cpeResult.envelope contains:
+// - payload: processed segments
 // - metadata: timestamp, nonce, protocolVersion
-// - signature: firma HMAC-SHA256
-// - lineage: linaje completo
+// - signature: HMAC-SHA256 signature
+// - lineage: full lineage
 ```
 
-### Ejemplo: Trabajar con Nonce
+### 6.2 Working with Nonce
 
 ```typescript
 import {
@@ -231,22 +243,22 @@ import {
 } from '@ai-pip/core'
 import type { Nonce } from '@ai-pip/core'
 
-// Crear nonce con longitud por defecto (16 bytes)
+// Create nonce with default length (16 bytes)
 const nonce1: Nonce = createNonce()
 
-// Crear nonce con longitud personalizada
+// Create nonce with custom length
 const nonce2: Nonce = createNonce(32) // 32 bytes
 
-// Validar nonce
+// Validate nonce
 console.log(isValidNonce(nonce1.value)) // true
 console.log(isValidNonce('invalid'))     // false
 
-// Comparar nonces
+// Compare nonces
 console.log(equalsNonce(nonce1, nonce2)) // false
 console.log(equalsNonce(nonce1, nonce1))  // true
 ```
 
-### Ejemplo: Metadata
+### 6.3 Metadata
 
 ```typescript
 import {
@@ -257,7 +269,7 @@ import {
 } from '@ai-pip/core'
 import type { CPEMetadata } from '@ai-pip/core'
 
-// Crear metadata básica
+// Create basic metadata
 const nonce = createNonce()
 const metadata: CPEMetadata = createMetadata(
   Date.now(),
@@ -265,7 +277,7 @@ const metadata: CPEMetadata = createMetadata(
   CURRENT_PROTOCOL_VERSION
 )
 
-// Crear metadata con firmas previas
+// Create metadata with previous signatures
 const metadataWithSignatures: CPEMetadata = createMetadata(
   Date.now(),
   nonce,
@@ -276,11 +288,11 @@ const metadataWithSignatures: CPEMetadata = createMetadata(
   }
 )
 
-// Validar metadata
+// Validate metadata
 console.log(isValidMetadata(metadata)) // true
 ```
 
-### Ejemplo: Firma Criptográfica
+### 6.4 Cryptographic signature
 
 ```typescript
 import {
@@ -293,25 +305,25 @@ import type { SignatureVO } from '@ai-pip/core'
 const secretKey = 'my-secret-key'
 const content = 'content to sign'
 
-// Generar firma
+// Generate signature
 const signature: SignatureVO = createSignature(content, secretKey)
-console.log(signature.value)        // 'a1b2c3d4...' (64 caracteres hex)
-console.log(signature.algorithm)     // 'HMAC-SHA256'
+console.log(signature.value)        // 'a1b2c3d4...' (64 hex characters)
+console.log(signature.algorithm)   // 'HMAC-SHA256'
 
-// Validar formato
+// Validate format
 console.log(isValidSignatureFormat(signature.value)) // true
 console.log(isValidSignatureFormat('invalid'))       // false
 
-// Verificar firma
+// Verify signature
 const isValid = verifySignature(content, signature.value, secretKey)
 console.log(isValid) // true
 
-// Verificar con contenido diferente
+// Verify with different content
 const isValid2 = verifySignature('different content', signature.value, secretKey)
 console.log(isValid2) // false
 ```
 
-### Ejemplo Completo: Pipeline CSL → ISL → CPE
+### 6.5 Full pipeline: CSL → ISL → CPE
 
 ```typescript
 import {
@@ -328,45 +340,45 @@ import type {
   CSLResult,
   ISLResult,
   CPEResult,
-  CPEEvelope
+  CPEEnvelope
 } from '@ai-pip/core'
 
-// 1. Segmentar contenido (CSL)
+// 1. Segment content (CSL)
 const cslResult: CSLResult = segment({
   content: 'System: You are helpful\n---\nUser: Hello',
   source: 'UI',
   metadata: {}
 })
 
-// 2. Sanitizar contenido (ISL)
+// 2. Sanitize content (ISL)
 const islResult: ISLResult = sanitize(cslResult)
 
-// 3. Generar envelope criptográfico (CPE)
+// 3. Generate cryptographic envelope (CPE)
 const secretKey = 'my-secret-key-12345'
 const cpeResult: CPEResult = envelope(islResult, secretKey)
 
-// 4. Acceder al envelope
-const envelope: CPEEvelope = cpeResult.envelope
+// 4. Access the envelope
+const env: CPEEnvelope = cpeResult.envelope
 
-console.log('Payload segments:', envelope.payload.segments.length)
-console.log('Metadata timestamp:', envelope.metadata.timestamp)
-console.log('Metadata nonce:', envelope.metadata.nonce)
-console.log('Metadata version:', envelope.metadata.protocolVersion)
-console.log('Signature:', envelope.signature.value.substring(0, 20) + '...')
-console.log('Lineage entries:', envelope.lineage.length)
+console.log('Payload segments:', env.payload.segments.length)
+console.log('Metadata timestamp:', env.metadata.timestamp)
+console.log('Metadata nonce:', env.metadata.nonce)
+console.log('Metadata version:', env.metadata.protocolVersion)
+console.log('Signature:', env.signature.value.substring(0, 20) + '...')
+console.log('Lineage entries:', env.lineage.length)
 
-// 5. Verificar firma (en producción, esto se haría al recibir el envelope)
-// Nota: En producción, necesitarías serializar el contenido y metadata
-// de la misma manera que se hizo durante la firma
+// 5. Verify signature (in production, this would be done when receiving the envelope)
+// Note: In production, you would serialize the content and metadata
+// the same way as during signing
 const isValid = verifySignature(
   'serialized-content-and-metadata',
-  envelope.signature.value,
+  env.signature.value,
   secretKey
 )
 console.log('Signature valid:', isValid)
 ```
 
-### Ejemplo: Validación de Envelope
+### 6.6 Envelope validation
 
 ```typescript
 import {
@@ -375,33 +387,33 @@ import {
   isValidSignatureFormat,
   verifySignature
 } from '@ai-pip/core'
-import type { CPEEvelope } from '@ai-pip/core'
+import type { CPEEnvelope } from '@ai-pip/core'
 
 function validateEnvelope(
-  envelope: CPEEvelope,
+  env: CPEEnvelope,
   secretKey: string,
   expectedContent: string
 ): boolean {
-  // 1. Validar metadata
-  if (!isValidMetadata(envelope.metadata)) {
+  // 1. Validate metadata
+  if (!isValidMetadata(env.metadata)) {
     console.error('Invalid metadata')
     return false
   }
 
-  // 2. Validar nonce
-  if (!isValidNonce(envelope.metadata.nonce)) {
+  // 2. Validate nonce
+  if (!isValidNonce(env.metadata.nonce)) {
     console.error('Invalid nonce')
     return false
   }
 
-  // 3. Validar formato de firma
-  if (!isValidSignatureFormat(envelope.signature.value)) {
+  // 3. Validate signature format
+  if (!isValidSignatureFormat(env.signature.value)) {
     console.error('Invalid signature format')
     return false
   }
 
-  // 4. Verificar firma
-  if (!verifySignature(expectedContent, envelope.signature.value, secretKey)) {
+  // 4. Verify signature
+  if (!verifySignature(expectedContent, env.signature.value, secretKey)) {
     console.error('Invalid signature')
     return false
   }
@@ -409,42 +421,47 @@ function validateEnvelope(
   return true
 }
 
-// Uso
+// Usage
 const isValid = validateEnvelope(cpeResult.envelope, secretKey, 'serialized-content')
 console.log('Envelope is valid:', isValid)
 ```
 
-## 🔗 Integración con ISL y ModelGateway
+---
 
-### Entrada desde ISL
+## 7. Integration with ISL and ModelGateway
 
-CPE recibe `ISLResult` con contenido sanitizado y linaje actualizado.
+### 7.1 Input from ISL
 
-### Salida hacia ModelGateway
+CPE receives `ISLResult` with sanitized content and updated lineage.
 
-CPE produce `CPEResult` que contiene el envelope criptográfico completo listo para ser enviado al modelo.
+### 7.2 Output to ModelGateway
 
-## 🔐 Seguridad
+CPE produces `CPEResult` containing the full cryptographic envelope ready to be sent to the model.
 
-### Algoritmo de Firma
+---
 
-- **HMAC-SHA256**: Algoritmo estándar para garantizar integridad y autenticidad
-- **Clave Secreta**: Debe ser proporcionada por el SDK o aplicación
-- **Validación de Formato**: Verificación de formato de firma (64 caracteres hex)
+## 8. Security
 
-### Prevención de Replay Attacks
+### 8.1 Signature Algorithm
 
-- **Nonce Único**: Cada envelope tiene un nonce único
-- **Timestamp**: Validación de timestamp para prevenir ataques de replay
-- **Validación de Futuro**: Timestamps del futuro son rechazados (con margen de 5 minutos)
+- **HMAC-SHA256**: Standard algorithm to guarantee integrity and authenticity
+- **Secret Key**: Must be provided by the SDK or application
+- **Format Validation**: Signature format verification (64 hex characters)
 
-## ⚠️ Limitaciones del Core
+### 8.2 Replay Attack Prevention
 
-El core de CPE **NO incluye**:
-- Serialización del envelope (va al SDK)
-- Deserialización del envelope (va al SDK)
-- Gestión de claves secretas (va al SDK)
-- Validación de timestamps en tiempo real (va al SDK)
+- **Unique Nonce**: Each envelope has a unique nonce
+- **Timestamp**: Timestamp validation to prevent replay attacks
+- **Future Validation**: Future timestamps are rejected (with a 5-minute margin)
 
-Estas funcionalidades se implementan en el SDK o en la aplicación.
+---
 
+## 9. Core Limitations
+
+The CPE core **does not include**:
+- Envelope serialization (handled by the SDK)
+- Envelope deserialization (handled by the SDK)
+- Secret key management (handled by the SDK)
+- Real-time timestamp validation (handled by the SDK)
+
+These functionalities are implemented in the SDK or in the application.

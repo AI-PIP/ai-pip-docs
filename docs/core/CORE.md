@@ -107,15 +107,6 @@ The core is **not responsible** for:
 
 The semantic core is defined by four main elements.
 
-
-## Layer Documentation
-
-For detailed documentation of each layer:
-
-- **[CSL (Context Segmentation Layer)](./layers/csl.md)**: Segmentation and classification
-- **[ISL (Instruction Sanitization Layer)](./layers/isl.md)**: Sanitization and risk signals
-- **[CPE (Cryptographic Prompt Envelope)](./layers/cpe.md)**: Envelope structure and metadata
-- **[Shared](./shared/shared.md)**: Shared utilities and lineage management
 ### 1. Semantic Data Structures
 
 The core defines a set of **value objects** that represent the protocol state at each step.
@@ -188,6 +179,18 @@ The lineage guarantees:
 
 Lineage is semantic, not operational.  
 It does not encode logs or runtime metrics.
+
+---
+
+## Layer Documentation
+
+For detailed documentation of each layer:
+
+- **[CSL (Context Segmentation Layer)](./layers/CSL.md)** — Segmentation and classification by trust level
+- **[ISL (Instruction Sanitization Layer)](./layers/ISL.md)** — Sanitization, prompt-injection detection, and ISLSignal for downstream layers
+- **[CPE (Cryptographic Prompt Envelope)](./layers/CPE.md)** — Envelope structure and metadata
+- **[AAL (Agent Action Lock)](./layers/AAL.md)** — Policy-based decisions (ALLOW/WARN/BLOCK) and removal plans from ISLSignal
+- **[Shared](./shared/shared.md)** — Shared utilities and lineage management
 
 ---
 

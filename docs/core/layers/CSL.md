@@ -1,23 +1,27 @@
-# CSL - Context Segmentation Layer
+# CSL (Context Segmentation Layer)
 
-> **Capa de Segmentación de Contexto** - Primera capa del protocolo AI-PIP
+> **Context Segmentation Layer** — First layer of the AI-PIP protocol. Segments input content into semantic segments and classifies them by trust level based on origin.
 
-## 📋 Descripción General
+---
 
-La **Context Segmentation Layer (CSL)** es la primera capa del protocolo AI-PIP. Su función principal es segmentar el contenido de entrada en segmentos semánticos y clasificarlos según su nivel de confianza basándose únicamente en su origen.
+## 1. Overview
 
-### Principios Fundamentales
+The **Context Segmentation Layer (CSL)** is the first layer of the AI-PIP protocol. Its main function is to segment input content into semantic segments and classify them by trust level based solely on their origin.
 
-- **Determinismo**: Mismo origen → mismo nivel de confianza, siempre
-- **Pureza**: Funciones sin efectos secundarios
-- **Inmutabilidad**: Todos los objetos son inmutables
-- **Preservación**: El contenido original nunca se pierde
+### 1.1 Principles
 
-## 🎯 Funcionalidades Principales
+- **Determinism**: Same origin → same trust level, always
+- **Purity**: Functions with no side effects
+- **Immutability**: All objects are immutable
+- **Preservation**: Original content is never lost
 
-### 1. Segmentación de Contenido
+---
 
-La función `segment()` divide el contenido de entrada en segmentos semánticos basándose en reglas de contexto (saltos de línea, delimitadores, etc.).
+## 2. Main Functionality
+
+### 2.1 Content Segmentation
+
+The `segment()` function splits input content into semantic segments based on context rules (line breaks, delimiters, etc.).
 
 ```typescript
 import { segment } from '@ai-pip/core/csl'
@@ -28,21 +32,21 @@ const result = segment({
   metadata: {}
 })
 
-// result.segments contiene los segmentos clasificados
+// result.segments contains the classified segments
 ```
 
-### 2. Clasificación por Origen
+### 2.2 Classification by Origin
 
-CSL clasifica cada segmento según su origen (`source`) o tipo de origen (`origin`):
+CSL classifies each segment according to its origin (`source`) or origin type (`origin`):
 
-#### Clasificación por Source
+#### Classification by Source
 
 - **`UI`** → **TC** (Trusted Content)
 - **`SYSTEM`** → **TC** (Trusted Content)
 - **`DOM`** → **STC** (Semi-Trusted Content)
 - **`API`** → **UC** (Untrusted Content)
 
-#### Clasificación por Origin
+#### Classification by Origin
 
 - **`SYSTEM_GENERATED`** → **TC**
 - **`DOM_VISIBLE`** → **STC**
@@ -50,98 +54,100 @@ CSL clasifica cada segmento según su origen (`source`) o tipo de origen (`origi
 - **`USER`** → **UC**
 - **`UNKNOWN`** → **UC** (fail-secure)
 
-### 3. Inicialización de Linaje
+### 2.3 Lineage Initialization
 
-Cada segmento recibe una entrada inicial de linaje que registra:
+Each segment receives an initial lineage entry that records:
 - **Step**: `'CSL'`
-- **Timestamp**: Momento de creación
+- **Timestamp**: Creation time
 
-## 📦 Componentes
+---
 
-### Funciones Principales
+## 3. Components
 
-#### Segmentación
-- **`segment(input: CSLInput): CSLResult`** - Función principal de segmentación. Divide el contenido en segmentos semánticos y los clasifica según su origen.
+### 3.1 Main Functions
 
-#### Clasificación
-- **`classifySource(source: Source): TrustLevel`** - Clasifica un source y retorna su TrustLevel. Determinista: mismo source → mismo trust level.
-- **`classifyOrigin(origin: Origin): TrustLevel`** - Clasifica un Origin y retorna su TrustLevel basándose en el originMap.
+#### Segmentation
+- **`segment(input: CSLInput): CSLResult`** — Main segmentation function. Splits content into semantic segments and classifies them by origin.
 
-#### Linaje
-- **`initLineage(segment: CSLSegment): LineageEntry[]`** - Inicializa el linaje de un segmento con una entrada CSL.
-- **`createLineageEntry(step: string, timestamp: number): LineageEntry`** - Crea una entrada de linaje con step y timestamp.
+#### Classification
+- **`classifySource(source: Source): TrustLevel`** — Classifies a source and returns its TrustLevel. Deterministic: same source → same trust level.
+- **`classifyOrigin(origin: Origin): TrustLevel`** — Classifies an Origin and returns its TrustLevel based on the originMap.
 
-#### Utilidades
-- **`generateId(): string`** - Genera un ID único para un segmento (formato: `seg-{timestamp}-{random}`).
-- **`splitByContextRules(content: string): string[]`** - Divide contenido por reglas de contexto (saltos de línea). Función pura de segmentación básica.
+#### Lineage
+- **`initLineage(segment: CSLSegment): LineageEntry[]`** — Initializes a segment's lineage with a CSL entry.
+- **`createLineageEntry(step: string, timestamp: number): LineageEntry`** — Creates a lineage entry with step and timestamp.
 
-### Value Objects
+#### Utilities
+- **`generateId(): string`** — Generates a unique ID for a segment (format: `seg-{timestamp}-{random}`).
+- **`splitByContextRules(content: string): string[]`** — Splits content by context rules (line breaks). Pure basic segmentation function.
+
+### 3.2 Value Objects
 
 #### TrustLevel
-- **Tipo**: `TrustLevel` - Nivel de confianza inmutable (TC, STC, UC)
-- **Creación**: `createTrustLevel(value: TrustLevelType): TrustLevel`
-- **Utilidades**:
-  - `isTrusted(trust: TrustLevel): boolean` - Verifica si es TC
-  - `isSemiTrusted(trust: TrustLevel): boolean` - Verifica si es STC
-  - `isUntrusted(trust: TrustLevel): boolean` - Verifica si es UC
+- **Type**: `TrustLevel` — Immutable trust level (TC, STC, UC)
+- **Creation**: `createTrustLevel(value: TrustLevelType): TrustLevel`
+- **Helpers**:
+  - `isTrusted(trust: TrustLevel): boolean` — Returns true if TC
+  - `isSemiTrusted(trust: TrustLevel): boolean` — Returns true if STC
+  - `isUntrusted(trust: TrustLevel): boolean` — Returns true if UC
 
 #### Origin
-- **Tipo**: `Origin` - Origen del contenido inmutable
-- **Creación**: `createOrigin(type: OriginType): Origin`
-- **Utilidades**:
-  - `isDom(origin: Origin): boolean` - Verifica si es origen DOM
-  - `isUser(origin: Origin): boolean` - Verifica si es USER
-  - `isSystem(origin: Origin): boolean` - Verifica si es SYSTEM_GENERATED
-  - `isInjected(origin: Origin): boolean` - Verifica si es SCRIPT_INJECTED
-  - `isUnknown(origin: Origin): boolean` - Verifica si es UNKNOWN
-  - `isNetworkFetched(origin: Origin): boolean` - Verifica si es NETWORK_FETCHED
-  - `isExternal(origin: Origin): boolean` - Verifica si es externo (NETWORK_FETCHED o SCRIPT_INJECTED)
+- **Type**: `Origin` — Immutable content origin
+- **Creation**: `createOrigin(type: OriginType): Origin`
+- **Helpers**:
+  - `isDom(origin: Origin): boolean` — Returns true if DOM origin
+  - `isUser(origin: Origin): boolean` — Returns true if USER
+  - `isSystem(origin: Origin): boolean` — Returns true if SYSTEM_GENERATED
+  - `isInjected(origin: Origin): boolean` — Returns true if SCRIPT_INJECTED
+  - `isUnknown(origin: Origin): boolean` — Returns true if UNKNOWN
+  - `isNetworkFetched(origin: Origin): boolean` — Returns true if NETWORK_FETCHED
+  - `isExternal(origin: Origin): boolean` — Returns true if external (NETWORK_FETCHED or SCRIPT_INJECTED)
 
 #### LineageEntry
-- **Tipo**: `LineageEntry` - Entrada de linaje inmutable
-- **Propiedades**:
-  - `step: string` - Paso del procesamiento (ej: 'CSL', 'ISL', 'CPE')
-  - `timestamp: number` - Timestamp Unix en milisegundos
-- **Creación**: `createLineageEntry(step: string, timestamp: number): LineageEntry`
+- **Type**: `LineageEntry` — Immutable lineage entry
+- **Properties**:
+  - `step: string` — Processing step (e.g. 'CSL', 'ISL', 'CPE')
+  - `timestamp: number` — Unix timestamp in milliseconds
+- **Creation**: `createLineageEntry(step: string, timestamp: number): LineageEntry`
 
 #### ContentHash
-- **Tipo**: `ContentHash` - Hash del contenido inmutable
-- **Propiedades**:
-  - `value: string` - Valor hexadecimal del hash
-  - `algorithm: HashAlgorithm` - Algoritmo usado ('sha256' | 'sha512')
-- **Creación**: `createContentHash(value: string, algorithm?: HashAlgorithm): ContentHash`
-- **Utilidades**:
-  - `isSha256(hash: ContentHash): boolean` - Verifica si usa SHA256
-  - `isSha512(hash: ContentHash): boolean` - Verifica si usa SHA512
+- **Type**: `ContentHash` — Immutable content hash
+- **Properties**:
+  - `value: string` — Hexadecimal hash value
+  - `algorithm: HashAlgorithm` — Algorithm used ('sha256' | 'sha512')
+- **Creation**: `createContentHash(value: string, algorithm?: HashAlgorithm): ContentHash`
+- **Helpers**:
+  - `isSha256(hash: ContentHash): boolean` — Returns true if SHA256
+  - `isSha512(hash: ContentHash): boolean` — Returns true if SHA512
 
 #### Origin Map
-- **Constante**: `originMap: Map<OriginType, TrustLevelType>` - Mapeo determinista de OriginType a TrustLevelType
-- **Validación**: `validateOriginMap(): void` - Valida que todos los OriginType estén mapeados
+- **Constant**: `originMap: Map<OriginType, TrustLevelType>` — Deterministic mapping of OriginType to TrustLevelType
+- **Validation**: `validateOriginMap(): void` — Validates that all OriginTypes are mapped
 
-### Tipos
+### 3.3 Types
 
 #### Enums
-- **`OriginType`** - Tipo de origen del contenido:
-  - `USER` - Entrada directa del usuario
-  - `DOM_VISIBLE` - Contenido DOM visible
-  - `DOM_HIDDEN` - Contenido DOM oculto
-  - `DOM_ATTRIBUTE` - Atributos DOM (data-*, aria-*)
-  - `SCRIPT_INJECTED` - Contenido inyectado por scripts
-  - `NETWORK_FETCHED` - Contenido desde red/API
-  - `SYSTEM_GENERATED` - Contenido generado por el sistema
-  - `UNKNOWN` - Origen desconocido
+- **`OriginType`** — Content origin type:
+  - `USER` — Direct user input
+  - `DOM_VISIBLE` — Visible DOM content
+  - `DOM_HIDDEN` — Hidden DOM content
+  - `DOM_ATTRIBUTE` — DOM attributes (data-*, aria-*)
+  - `SCRIPT_INJECTED` — Script-injected content
+  - `NETWORK_FETCHED` — Content from network/API
+  - `SYSTEM_GENERATED` — System-generated content
+  - `UNKNOWN` — Unknown origin
 
-- **`TrustLevelType`** - Nivel de confianza:
-  - `TC` - Trusted Content (Contenido confiable)
-  - `STC` - Semi-Trusted Content (Contenido semi-confiable)
-  - `UC` - Untrusted Content (Contenido no confiable)
+- **`TrustLevelType`** — Trust level:
+  - `TC` — Trusted Content
+  - `STC` — Semi-Trusted Content
+  - `UC` — Untrusted Content
 
-#### Tipos Básicos
-- **`Source`** - Source del contenido: `'DOM' | 'UI' | 'SYSTEM' | 'API'`
-- **`HashAlgorithm`** - Algoritmo de hash: `'sha256' | 'sha512'`
+#### Basic Types
+- **`Source`** — Content source: `'DOM' | 'UI' | 'SYSTEM' | 'API'`
+- **`HashAlgorithm`** — Hash algorithm: `'sha256' | 'sha512'`
 
 #### Interfaces
-- **`CSLInput`** - Input para segmentación:
+- **`CSLInput`** — Input for segmentation:
   ```typescript
   {
     content: string
@@ -150,7 +156,7 @@ Cada segmento recibe una entrada inicial de linaje que registra:
   }
   ```
 
-- **`CSLSegment`** - Segmento clasificado:
+- **`CSLSegment`** — Classified segment:
   ```typescript
   {
     id: string
@@ -163,7 +169,7 @@ Cada segmento recibe una entrada inicial de linaje que registra:
   }
   ```
 
-- **`CSLResult`** - Resultado de segmentación:
+- **`CSLResult`** — Segmentation result:
   ```typescript
   {
     segments: readonly CSLSegment[]
@@ -172,67 +178,73 @@ Cada segmento recibe una entrada inicial de linaje que registra:
   }
   ```
 
-### Excepciones
+### 3.4 Exceptions
 
-- **`ClassificationError`** - Lanzada cuando la clasificación falla (origen no mapeado, etc.)
-- **`SegmentationError`** - Lanzada cuando la segmentación falla (contenido inválido, etc.)
+- **`ClassificationError`** — Thrown when classification fails (unmapped origin, etc.)
+- **`SegmentationError`** — Thrown when segmentation fails (invalid content, etc.)
 
-## 🔄 Flujo de Procesamiento
+---
+
+## 4. Processing Flow
 
 ```
 Input (content + source)
     ↓
-Segmentación (splitByContextRules)
+Segmentation (splitByContextRules)
     ↓
-Clasificación (classifySource/classifyOrigin)
+Classification (classifySource / classifyOrigin)
     ↓
-Inicialización de Linaje (initLineage)
+Lineage initialization (initLineage)
     ↓
-CSLResult (segmentos + linaje)
+CSLResult (segments + lineage)
 ```
 
-## ✅ Garantías
+---
 
-1. **Integridad**: El contenido original se preserva en cada segmento
-2. **Determinismo**: Mismo input → mismo output
-3. **Trazabilidad**: Todo segmento tiene linaje inicializado
-4. **Fail-Secure**: Orígenes desconocidos se clasifican como UC
+## 5. Guarantees
 
-## 📝 Ejemplos de Uso
+1. **Integrity**: Original content is preserved in each segment
+2. **Determinism**: Same input → same output
+3. **Traceability**: Every segment has initialized lineage
+4. **Fail-Secure**: Unknown origins are classified as UC
 
-### Ejemplo Básico: Segmentación
+---
+
+## 6. Usage Examples
+
+### 6.1 Basic segmentation
 
 ```typescript
 import { segment } from '@ai-pip/core'
 
-// Segmentar contenido
+// Segment content
 const result = segment({
   content: 'System prompt\n---\nUser: Hello',
   source: 'UI',
   metadata: { sessionId: '123' }
 })
 
-// result.segments contiene los segmentos clasificados
-// result.lineage contiene el linaje inicial
+// result.segments contains the classified segments
+// result.lineage contains the initial lineage
 ```
 
-### Ejemplo: Clasificación de Sources
+### 6.2 Source classification
 
 ```typescript
 import { classifySource, isTrusted, isSemiTrusted, isUntrusted } from '@ai-pip/core'
 
-// Clasificar diferentes sources
-const uiTrust = classifySource('UI')        // { value: 'TC' }
-const domTrust = classifySource('DOM')      // { value: 'STC' }
-const apiTrust = classifySource('API')      // { value: 'UC' }
+// Classify different sources
+const uiTrust = classifySource('UI')   // { value: 'TC' }
+const domTrust = classifySource('DOM') // { value: 'STC' }
+const apiTrust = classifySource('API') // { value: 'UC' }
 
-// Verificar niveles de confianza
+// Check trust levels
 console.log(isTrusted(uiTrust))      // true
 console.log(isSemiTrusted(domTrust)) // true
 console.log(isUntrusted(apiTrust))   // true
 ```
 
-### Ejemplo: Trabajar con Origins
+### 6.3 Working with Origins
 
 ```typescript
 import {
@@ -244,49 +256,49 @@ import {
   isExternal
 } from '@ai-pip/core'
 
-// Crear un Origin
+// Create an Origin
 const origin = createOrigin(OriginType.DOM_VISIBLE)
 
-// Clasificar el Origin
+// Classify the Origin
 const trust = classifyOrigin(origin) // { value: 'STC' }
 
-// Verificar tipo de origen
+// Check origin type
 console.log(isDom(origin))      // true
 console.log(isSystem(origin))   // false
-console.log(isExternal(origin)) // false
+console.log(isExternal(origin))  // false
 ```
 
-### Ejemplo: ContentHash
+### 6.4 ContentHash
 
 ```typescript
 import { createContentHash, isSha256, isSha512 } from '@ai-pip/core'
 
-// Crear hash SHA256
+// Create SHA256 hash
 const hash256 = createContentHash(
-  'a1b2c3d4e5f6...', // 64 caracteres hex
+  'a1b2c3d4e5f6...', // 64 hex characters
   'sha256'
 )
 
-// Crear hash SHA512 (por defecto es sha256)
+// Create SHA512 hash (default is sha256)
 const hash512 = createContentHash(
-  'a1b2c3d4e5f6...', // 128 caracteres hex
+  'a1b2c3d4e5f6...', // 128 hex characters
   'sha512'
 )
 
-// Verificar algoritmo
+// Check algorithm
 console.log(isSha256(hash256)) // true
 console.log(isSha512(hash512)) // true
 ```
 
-### Ejemplo: Linaje
+### 6.5 Lineage
 
 ```typescript
 import { createLineageEntry, initLineage } from '@ai-pip/core'
 
-// Crear entrada de linaje manualmente
+// Create lineage entry manually
 const entry = createLineageEntry('CSL', Date.now())
 
-// Inicializar linaje para un segmento
+// Initialize lineage for a segment
 const segment = {
   id: 'seg-123',
   content: 'Test',
@@ -296,23 +308,23 @@ const segment = {
 }
 
 const lineage = initLineage(segment)
-// Retorna: [{ step: 'CSL', timestamp: ... }]
+// Returns: [{ step: 'CSL', timestamp: ... }]
 ```
 
-### Ejemplo: Utilidades
+### 6.6 Utilities
 
 ```typescript
 import { generateId, splitByContextRules } from '@ai-pip/core'
 
-// Generar ID único
+// Generate unique ID
 const id = generateId() // 'seg-1234567890-abc123'
 
-// Dividir contenido por reglas de contexto
+// Split content by context rules
 const segments = splitByContextRules('Line 1\nLine 2\n\nLine 3')
-// Retorna: ['Line 1', 'Line 2', 'Line 3']
+// Returns: ['Line 1', 'Line 2', 'Line 3']
 ```
 
-### Ejemplo Completo: Pipeline CSL
+### 6.7 Full pipeline: CSL
 
 ```typescript
 import {
@@ -324,14 +336,14 @@ import {
 } from '@ai-pip/core'
 import type { CSLResult, CSLSegment } from '@ai-pip/core'
 
-// 1. Segmentar contenido
+// 1. Segment content
 const cslResult: CSLResult = segment({
   content: 'System: You are a helpful assistant\n---\nUser: Hello',
   source: 'UI',
   metadata: { sessionId: 'abc123' }
 })
 
-// 2. Procesar cada segmento
+// 2. Process each segment
 cslResult.segments.forEach((seg: CSLSegment) => {
   console.log(`Segment ID: ${seg.id}`)
   console.log(`Content: ${seg.content}`)
@@ -340,31 +352,34 @@ cslResult.segments.forEach((seg: CSLSegment) => {
   console.log(`Lineage entries: ${seg.lineage.length}`)
 })
 
-// 3. Clasificar un source específico
+// 3. Classify a specific source
 const trust = classifySource('API')
 console.log(`API trust level: ${trust.value}`) // 'UC'
 ```
 
-## 🔗 Integración con ISL
+---
 
-CSL pasa su resultado a ISL mediante el contrato:
+## 7. Integration with ISL
+
+CSL passes its result to ISL via the contract:
 
 ```typescript
 CSLResult {
-  segments: CSLSegment[]  // Segmentos clasificados
-  lineage: LineageEntry[] // Linaje inicial
+  segments: CSLSegment[]  // Classified segments
+  lineage: LineageEntry[] // Initial lineage
 }
 ```
 
-ISL recibe este resultado y aplica sanitización según el `trust` level de cada segmento.
+ISL receives this result and applies sanitization according to each segment's `trust` level.
 
-## ⚠️ Limitaciones del Core
+---
 
-El core de CSL **NO incluye**:
-- Normalización agresiva de contenido
-- Detección de prompt injection (va a ISL)
-- Políticas de seguridad (van a ISL)
-- Servicios con estado (van al SDK)
+## 8. Core Limitations
 
-Estas funcionalidades se implementan en capas superiores o en el SDK.
+The CSL core **does not include**:
+- Aggressive content normalization
+- Prompt-injection detection (handled by ISL)
+- Security policies (handled by ISL)
+- Stateful services (handled by the SDK)
 
+These functionalities are implemented in upper layers or in the SDK.

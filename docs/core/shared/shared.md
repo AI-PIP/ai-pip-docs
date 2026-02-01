@@ -1,104 +1,116 @@
-# Shared - Funciones Compartidas
+# Shared — Shared Utilities
 
-> **Utilidades Compartidas** - Funciones puras compartidas entre todas las capas del protocolo AI-PIP
+> **Shared utilities** — Pure functions shared across all layers of the AI-PIP protocol.
 
-## 📋 Descripción General
+---
 
-La capa **Shared** proporciona funciones puras compartidas que son utilizadas por todas las capas del protocolo AI-PIP (CSL, ISL, CPE). Su función principal es el manejo del linaje (lineage) que permite rastrear el procesamiento de contenido a través de todas las capas.
+## 1. Overview
 
-### Principios Fundamentales
+The **Shared** layer provides pure functions shared by all layers of the AI-PIP protocol (CSL, ISL, CPE). Its main function is lineage (lineage) handling, which tracks content processing across all layers.
 
-- **Pureza**: Todas las funciones son puras (sin efectos secundarios)
-- **Inmutabilidad**: Los arrays de linaje son inmutables, las funciones retornan nuevos arrays
-- **Simplicidad**: Solo funciones básicas de manejo de linaje
-- **Trazabilidad**: Preserva el historial completo de procesamiento
+### 1.1 Principles
 
-## 🎯 Funcionalidades Principales
+- **Purity**: All functions are pure (no side effects)
+- **Immutability**: Lineage arrays are immutable; functions return new arrays
+- **Simplicity**: Only basic lineage handling functions
+- **Traceability**: Preserves full processing history
 
-### 1. Manejo de Linaje
+---
 
-El linaje (lineage) es un registro inmutable del procesamiento de contenido a través de las diferentes capas. Cada entrada registra:
-- **Step**: La capa que procesó el contenido (ej: 'CSL', 'ISL', 'CPE')
-- **Timestamp**: Momento en que se procesó
+## 2. Main Functionality
 
-### 2. Operaciones sobre Linaje
+### 2.1 Lineage Handling
 
-Las funciones de Shared permiten:
-- Agregar entradas al linaje
-- Filtrar entradas por step
-- Obtener la última entrada
+Lineage is an immutable record of content processing through the different layers. Each entry records:
+- **Step**: The layer that processed the content (e.g. 'CSL', 'ISL', 'CPE')
+- **Timestamp**: When it was processed
 
-## 📦 Componentes
+### 2.2 Lineage Operations
 
-### Funciones Principales
+Shared functions allow:
+- Adding entries to lineage
+- Filtering entries by step
+- Getting the last entry
 
-#### Agregar Entradas
-- **`addLineageEntry(lineage: readonly LineageEntry[], entry: LineageEntry): LineageEntry[]`** - Agrega una entrada de linaje a un array existente. Retorna un nuevo array inmutable.
+---
 
-- **`addLineageEntries(lineage: readonly LineageEntry[], entries: readonly LineageEntry[]): LineageEntry[]`** - Agrega múltiples entradas de linaje a un array existente. Retorna un nuevo array inmutable.
+## 3. Components
 
-#### Filtrar y Consultar
-- **`filterLineageByStep(lineage: readonly LineageEntry[], step: string): LineageEntry[]`** - Filtra entradas de linaje por step. Retorna un nuevo array con solo las entradas que coinciden con el step.
+### 3.1 Main Functions
 
-- **`getLastLineageEntry(lineage: readonly LineageEntry[]): LineageEntry | undefined`** - Obtiene la última entrada de linaje. Retorna `undefined` si el linaje está vacío.
+#### Adding Entries
+- **`addLineageEntry(lineage: readonly LineageEntry[], entry: LineageEntry): LineageEntry[]`** — Appends a lineage entry to an existing array. Returns a new immutable array.
 
-### Tipos
+- **`addLineageEntries(lineage: readonly LineageEntry[], entries: readonly LineageEntry[]): LineageEntry[]`** — Appends multiple lineage entries to an existing array. Returns a new immutable array.
+
+#### Filtering and Querying
+- **`filterLineageByStep(lineage: readonly LineageEntry[], step: string): LineageEntry[]`** — Filters lineage entries by step. Returns a new array with only entries matching the step.
+
+- **`getLastLineageEntry(lineage: readonly LineageEntry[]): LineageEntry | undefined`** — Returns the last lineage entry. Returns `undefined` if lineage is empty.
+
+### 3.2 Types
 
 #### LineageEntry
-El tipo `LineageEntry` es importado desde CSL y tiene la siguiente estructura:
+The `LineageEntry` type is imported from CSL and has the following structure:
 
 ```typescript
 {
-  step: string        // Paso del procesamiento (ej: 'CSL', 'ISL', 'CPE')
-  timestamp: number   // Timestamp Unix en milisegundos
+  step: string        // Processing step (e.g. 'CSL', 'ISL', 'CPE')
+  timestamp: number   // Unix timestamp in milliseconds
 }
 ```
 
-## 🔄 Flujo de Procesamiento
+---
 
-El linaje fluye a través de todas las capas:
+## 4. Processing Flow
+
+Lineage flows through all layers:
 
 ```
-CSL → Inicializa linaje con entrada 'CSL'
+CSL → Initializes lineage with 'CSL' entry
   ↓
-ISL → Agrega entrada 'ISL' al linaje
+ISL → Appends 'ISL' entry to lineage
   ↓
-CPE → Agrega entrada 'CPE' al linaje
+CPE → Appends 'CPE' entry to lineage
   ↓
-Linaje completo con todas las capas
+Full lineage with all layers
 ```
 
-## ✅ Garantías
+---
 
-1. **Inmutabilidad**: Todas las funciones retornan nuevos arrays, nunca modifican el linaje original
-2. **Pureza**: Sin efectos secundarios, funciones deterministas
-3. **Preservación**: El linaje completo se preserva a través de todas las capas
-4. **Trazabilidad**: Cada paso del procesamiento queda registrado
+## 5. Guarantees
 
-## 📝 Ejemplos de Uso
+1. **Immutability**: All functions return new arrays; they never mutate the original lineage
+2. **Purity**: No side effects; deterministic functions
+3. **Preservation**: Full lineage is preserved across all layers
+4. **Traceability**: Every processing step is recorded
 
-### Ejemplo Básico: Agregar Entrada
+---
+
+## 6. Usage Examples
+
+### 6.1 Basic: Add entry
 
 ```typescript
 import { addLineageEntry, createLineageEntry } from '@ai-pip/core'
 
-// Linaje inicial (desde CSL)
+// Initial lineage (from CSL)
 const initialLineage = [
   { step: 'CSL', timestamp: Date.now() }
 ]
 
-// Agregar entrada de ISL
+// Add ISL entry
 const islEntry = createLineageEntry('ISL', Date.now())
 const updatedLineage = addLineageEntry(initialLineage, islEntry)
 
-// updatedLineage ahora contiene:
+// updatedLineage now contains:
 // [
 //   { step: 'CSL', timestamp: ... },
 //   { step: 'ISL', timestamp: ... }
 // ]
 ```
 
-### Ejemplo: Agregar Múltiples Entradas
+### 6.2 Add multiple entries
 
 ```typescript
 import { addLineageEntries, createLineageEntry } from '@ai-pip/core'
@@ -107,16 +119,16 @@ const initialLineage = [
   { step: 'CSL', timestamp: Date.now() }
 ]
 
-// Crear múltiples entradas
+// Create multiple entries
 const newEntries = [
   createLineageEntry('ISL', Date.now()),
   createLineageEntry('CPE', Date.now())
 ]
 
-// Agregar todas las entradas de una vez
+// Add all entries at once
 const fullLineage = addLineageEntries(initialLineage, newEntries)
 
-// fullLineage ahora contiene:
+// fullLineage now contains:
 // [
 //   { step: 'CSL', timestamp: ... },
 //   { step: 'ISL', timestamp: ... },
@@ -124,7 +136,7 @@ const fullLineage = addLineageEntries(initialLineage, newEntries)
 // ]
 ```
 
-### Ejemplo: Filtrar por Step
+### 6.3 Filter by step
 
 ```typescript
 import { filterLineageByStep } from '@ai-pip/core'
@@ -136,17 +148,17 @@ const lineage = [
   { step: 'ISL', timestamp: 4000 }
 ]
 
-// Filtrar solo entradas de ISL
+// Filter only ISL entries
 const islEntries = filterLineageByStep(lineage, 'ISL')
 
-// islEntries contiene:
+// islEntries contains:
 // [
 //   { step: 'ISL', timestamp: 2000 },
 //   { step: 'ISL', timestamp: 4000 }
 // ]
 ```
 
-### Ejemplo: Obtener Última Entrada
+### 6.4 Get last entry
 
 ```typescript
 import { getLastLineageEntry } from '@ai-pip/core'
@@ -157,18 +169,18 @@ const lineage = [
   { step: 'CPE', timestamp: 3000 }
 ]
 
-// Obtener última entrada
+// Get last entry
 const lastEntry = getLastLineageEntry(lineage)
 
-// lastEntry es: { step: 'CPE', timestamp: 3000 }
+// lastEntry is: { step: 'CPE', timestamp: 3000 }
 
-// Con linaje vacío
+// With empty lineage
 const emptyLineage: LineageEntry[] = []
 const noEntry = getLastLineageEntry(emptyLineage)
-// noEntry es: undefined
+// noEntry is: undefined
 ```
 
-### Ejemplo Completo: Pipeline con Linaje
+### 6.5 Full pipeline with lineage
 
 ```typescript
 import {
@@ -182,51 +194,51 @@ import {
 } from '@ai-pip/core'
 import type { LineageEntry } from '@ai-pip/core'
 
-// 1. CSL inicializa el linaje
+// 1. CSL initializes lineage
 const cslResult = segment({
   content: 'Test content',
   source: 'UI',
   metadata: {}
 })
 
-// El linaje inicial contiene: [{ step: 'CSL', timestamp: ... }]
+// Initial lineage contains: [{ step: 'CSL', timestamp: ... }]
 
-// 2. ISL agrega entrada al linaje (automáticamente en sanitize)
+// 2. ISL adds entry to lineage (automatically in sanitize)
 const islResult = sanitize(cslResult)
 
-// El linaje ahora contiene:
+// Lineage now contains:
 // [
 //   { step: 'CSL', timestamp: ... },
 //   { step: 'ISL', timestamp: ... }
 // ]
 
-// 3. CPE agrega entrada al linaje (automáticamente en envelope)
+// 3. CPE adds entry to lineage (automatically in envelope)
 const cpeResult = envelope(islResult, 'secret-key')
 
-// El linaje final contiene:
+// Final lineage contains:
 // [
 //   { step: 'CSL', timestamp: ... },
 //   { step: 'ISL', timestamp: ... },
 //   { step: 'CPE', timestamp: ... }
 // ]
 
-// 4. Consultar el linaje
+// 4. Query lineage
 const fullLineage = cpeResult.envelope.lineage
 
-// Obtener última entrada
+// Get last entry
 const lastEntry = getLastLineageEntry(fullLineage)
 console.log('Last step:', lastEntry?.step) // 'CPE'
 
-// Filtrar entradas de una capa específica
+// Filter entries for a specific layer
 const cslEntries = filterLineageByStep(fullLineage, 'CSL')
 console.log('CSL entries:', cslEntries.length) // 1
 
-// Agregar entrada personalizada (ej: para auditoría)
+// Add custom entry (e.g. for audit)
 const auditEntry = createLineageEntry('AUDIT', Date.now())
 const lineageWithAudit = addLineageEntry(fullLineage, auditEntry)
 ```
 
-### Ejemplo: Auditoría y Análisis
+### 6.6 Audit and analysis
 
 ```typescript
 import {
@@ -236,18 +248,18 @@ import {
 import type { LineageEntry } from '@ai-pip/core'
 
 function analyzeLineage(lineage: readonly LineageEntry[]) {
-  // Obtener última entrada
+  // Get last entry
   const lastEntry = getLastLineageEntry(lineage)
   console.log('Last processing step:', lastEntry?.step)
 
-  // Contar entradas por step
+  // Count entries by step
   const steps = ['CSL', 'ISL', 'CPE'] as const
   steps.forEach(step => {
     const entries = filterLineageByStep(lineage, step)
     console.log(`${step} entries: ${entries.length}`)
   })
 
-  // Calcular tiempo total de procesamiento
+  // Calculate total processing time
   if (lineage.length >= 2) {
     const first = lineage[0]
     const last = lastEntry
@@ -258,37 +270,42 @@ function analyzeLineage(lineage: readonly LineageEntry[]) {
   }
 }
 
-// Uso
+// Usage
 const lineage = cpeResult.envelope.lineage
 analyzeLineage(lineage)
 ```
 
-## 🔗 Integración con Otras Capas
+---
+
+## 7. Integration with Other Layers
 
 ### CSL
-- CSL inicializa el linaje con `initLineage()` que crea la primera entrada con step 'CSL'.
+- CSL initializes lineage with `initLineage()`, which creates the first entry with step 'CSL'.
 
 ### ISL
-- ISL agrega una entrada al linaje con step 'ISL' durante la sanitización.
+- ISL appends an entry to lineage with step 'ISL' during sanitization.
 
 ### CPE
-- CPE agrega una entrada al linaje con step 'CPE' durante la generación del envelope.
+- CPE appends an entry to lineage with step 'CPE' during envelope generation.
 
-## ⚠️ Limitaciones del Core
+---
 
-El core de Shared **NO incluye**:
-- Análisis avanzado de linaje (va al SDK)
-- Estadísticas de procesamiento (van al SDK)
-- Serialización de linaje (va al SDK)
-- Búsqueda compleja en linaje (va al SDK)
+## 8. Core Limitations
 
-Estas funcionalidades se implementan en el SDK o en herramientas de auditoría.
+The Shared core **does not include**:
+- Advanced lineage analysis (handled by the SDK)
+- Processing statistics (handled by the SDK)
+- Lineage serialization (handled by the SDK)
+- Complex lineage queries (handled by the SDK)
 
-## 📚 Referencias
+These functionalities are implemented in the SDK or in audit tools.
 
-- **LineageEntry**: Disponible desde `@ai-pip/core`
-- **createLineageEntry**: Disponible desde `@ai-pip/core`
-- **initLineage**: Disponible desde `@ai-pip/core`
+---
 
-> **Nota**: Las funciones de Shared están disponibles desde el entry point principal `@ai-pip/core`, no desde un subpath específico.
+## 9. References
 
+- **LineageEntry**: Available from `@ai-pip/core`
+- **createLineageEntry**: Available from `@ai-pip/core`
+- **initLineage**: Available from `@ai-pip/core`
+
+> **Note**: Shared functions are available from the main entry point `@ai-pip/core`, not from a specific subpath.
