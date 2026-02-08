@@ -1,14 +1,14 @@
 # AAL (Agent Action Lock)
 
 **Layer type:** Hybrid (semantic core in `@ai-pip/core`, execution in SDK)  
-**Consumes:** ISLSignal (from ISL)  
-**Produces:** AnomalyAction, DecisionReason, RemovalPlan, lineage
+**Consumes:** ISLSignal (for decisions); ISLResult (for remediation plan)  
+**Produces:** AnomalyAction, DecisionReason, RemediationPlan, lineage
 
 ---
 
 ## 1. Overview
 
-AAL (Agent Action Lock) is the **hybrid layer** of the AI-PIP protocol. The **core** defines the semantic contract: value objects, types, and pure decision functions. The **SDK** implements execution: applying the decision (ALLOW/WARN/BLOCK), removing instructions, and managing state.
+AAL (Agent Action Lock) is the **hybrid layer** of the AI-PIP protocol. The **core** defines the semantic contract: value objects, types, and pure decision functions. The **SDK** implements execution: applying the decision (ALLOW/WARN/BLOCK), performing remediation (e.g. AI-powered cleanup), and managing state.
 
 ### 1.1 Responsibilities
 
@@ -17,20 +17,23 @@ AAL (Agent Action Lock) is the **hybrid layer** of the AI-PIP protocol. The **co
 | Evaluate ISL signals against policy | Execute ALLOW/WARN/BLOCK |
 | Compute AnomalyAction (semantic decision) | Enforce policy (e.g. block request, log, notify) |
 | Build DecisionReason (audit) | Persist logs, send to observability |
-| Build RemovalPlan (what to remove) | Actually remove text from prompt / segments |
-| Build AAL lineage entry | Apply removals, call model, handle errors |
+| Build RemediationPlan (what to clean: goals, constraints, target segments) | Perform cleanup (e.g. AI tool) using the plan |
+| Build AAL lineage entry | Orchestrate pipeline, apply CPE per layer for integrity |
+
+AAL describes **what** to do (goals, constraints, which segments need remediation). The SDK (or an AI agent) decides **how** to do it (e.g. call an AI cleanup tool that removes malicious instructions while preserving user intent).
 
 ### 1.2 Design principles
 
-- **Consumes only ISLSignal.** AAL never receives or depends on ISLResult. Layer separation is preserved by the signal contract.
+- **Decisions use only ISLSignal.** Resolving action (ALLOW/WARN/BLOCK) and building DecisionReason use only the signal. Layer separation is preserved.
+- **Remediation plan from ISLResult.** When the SDK has access to ISLResult, the core builds a **RemediationPlan** with `targetSegments` (segment IDs with detections), `goals` (e.g. remove_prompt_injection), and `constraints` (e.g. preserve_user_intent). The core does **not** perform content removal; the SDK or an AI tool does.
 - **No side effects in core.** All AAL core functions are pure: same inputs → same outputs, no I/O, no mutable state.
-- **Policy describes intent.** `AgentPolicy` is a configuration object; the core interprets it to produce decisions and plans. The SDK is responsible for acting on them.
+- **Policy describes intent.** `AgentPolicy` is a configuration object; the core interprets it to produce decisions and remediation plans. The SDK is responsible for enforcing the action and executing remediation.
 
 ---
 
 ## 2. Contract: ISL → AAL
 
-AAL’s only input from ISL is **ISLSignal**.
+AAL’s input from ISL is **ISLSignal** for decisions and **ISLResult** for the remediation plan.
 
 ### 2.1 ISLSignal (consumed by AAL)
 
@@ -48,22 +51,28 @@ interface ISLSignal {
 - **hasThreats:** Convenience for “any detection present.”
 - **timestamp:** For lineage and auditing; core does not interpret it for decisions.
 
-AAL does **not** receive:
-
-- ISLResult (segments, full lineage, internal metadata).
-- Raw segment content or trust levels; only what is encoded in the signal.
+For **decisions** (resolveAgentAction, buildDecisionReason), AAL uses only the signal. For the **remediation plan** (buildRemediationPlan), the caller passes ISLResult so the core can determine which segments have detections and derive goals from detection types.
 
 ### 2.2 Flow
+
+**Decision path (signal only):**
 
 ```
 ISL.sanitize(cslResult) → ISLResult (internal)
 ISL.emitSignal(islResult) → ISLSignal
 AAL.resolveAgentAction(islSignal, policy) → AnomalyAction
 AAL.buildDecisionReason(action, islSignal, policy) → DecisionReason
-AAL.buildRemovalPlan(islSignal, policy) → RemovalPlan
 ```
 
-The SDK then uses `AnomalyAction`, `DecisionReason`, and `RemovalPlan` to execute behavior (e.g. block call, log, strip instructions).
+The SDK uses `AnomalyAction` and `DecisionReason` to execute behavior (e.g. block call, log).
+
+**Remediation plan path (when you have ISLResult):**
+
+```
+ISLResult + policy → AAL.buildRemediationPlan(islResult, policy) → RemediationPlan
+```
+
+The RemediationPlan contains `strategy`, `goals`, `constraints`, and `targetSegments`. The SDK (or an AI agent) uses this plan to clean the content of the target segments—for example, by calling an AI tool that removes malicious instructions while respecting the constraints. The core does **not** apply any removal; it only produces the plan.
 
 ---
 
@@ -95,8 +104,6 @@ type AnomalyScore = {
 **Creation:** `createAnomalyScore(score, action)`  
 **Predicates:** `isHighRisk(anomaly)`, `isWarnRisk(anomaly)`, `isLowRisk(anomaly)` (based on `action`).
 
-- `score` must be in `[0, 1]`; `action` must be one of `'ALLOW' | 'WARN' | 'BLOCK'`.
-
 ### 3.3 AgentPolicy
 
 Configuration that drives AAL decisions. Pure data; no logic inside.
@@ -107,7 +114,7 @@ interface AgentPolicy {
     warn: RiskScore   // 0..1
     block: RiskScore  // 0..1
   }
-  removal: {
+  remediation: {
     enabled: boolean
   }
   mode?: 'strict' | 'balanced' | 'permissive'
@@ -119,10 +126,10 @@ interface AgentPolicy {
   - riskScore ≥ block → BLOCK  
   - riskScore ≥ warn (and < block) → WARN  
   - else → ALLOW  
-- **removal.enabled:** If `true`, `buildRemovalPlan` can return instructions to remove; if `false`, plan is empty and `removalEnabled: false`.
+- **remediation.enabled:** If `true`, `buildRemediationPlan` can return a plan with non-empty `targetSegments` and `goals` when threats exist; if `false`, the plan has `needsRemediation: false` and empty lists.
 - **mode / explain:** Reserved for SDK or future use; core does not interpret them.
 
-Typical convention: `0 ≤ warn < block ≤ 1`. Core does not enforce ordering; misconfiguration can make WARN unreachable.
+Typical convention: `0 ≤ warn < block ≤ 1`. Core does not enforce ordering.
 
 ### 3.4 PolicyRule (extended policy semantics)
 
@@ -136,51 +143,35 @@ type PolicyRule = {
   readonly roleProtection: RoleProtectionConfig
   readonly contextLeakPrevention: ContextLeakPreventionConfig
 }
-
-type RoleProtectionConfig = {
-  readonly protectedRoles: readonly ProtectedRole[]
-  readonly immutableInstructions: readonly ImmutableInstruction[]
-}
-
-type ContextLeakPreventionConfig = {
-  readonly enabled: boolean
-  readonly blockMetadataExposure: boolean
-  readonly sanitizeInternalReferences: boolean
-}
+// ... RoleProtectionConfig, ContextLeakPreventionConfig, etc.
 ```
 
-**Type aliases:** `BlockedIntent`, `SensitiveScope`, `ProtectedRole`, `ImmutableInstruction` are `string` (semantic labels).
+**Creation:** `createPolicyRule(...)`  
+**Predicates:** `isIntentBlocked`, `isScopeSensitive`, `isRoleProtected`, etc.
 
-**Creation:** `createPolicyRule(version, blockedIntents, sensitiveScope, roleProtection, contextLeakPrevention)`  
-**Predicates:**
+Core only exposes these helpers; it does not use PolicyRule inside `resolveAgentAction` or `buildRemediationPlan`. The SDK can use PolicyRule to refine behavior.
 
-- `isIntentBlocked(policy, intent)`
-- `isScopeSensitive(policy, scope)`
-- `isRoleProtected(policy, role)`
-- `isInstructionImmutable(policy, instruction)`
-- `isContextLeakPreventionEnabled(policy)`
+### 3.5 RemediationPlan
 
-Core only exposes these helpers; it does not use PolicyRule inside `resolveAgentAction` or `buildRemovalPlan`. The SDK (or higher layers) can use PolicyRule to refine behavior (e.g. extra checks before ALLOW).
-
-### 3.5 RemovedInstruction
-
-Describes one instruction that should be removed. Used in `RemovalPlan`; actual removal is done by the SDK.
+Describes *what* to do for remediation, not *how*. The SDK (or an AI agent) performs the actual cleanup.
 
 ```ts
-interface RemovedInstruction {
-  readonly type: 'system_command' | 'role_swapping' | 'jailbreak' | 'override' | 'manipulation'
-  readonly pattern: string
-  readonly position: Position
-  readonly description: string
+interface RemediationPlan {
+  readonly strategy: string           // e.g. 'AI_CLEANUP'
+  readonly goals: readonly string[]   // e.g. 'remove_prompt_injection', 'remove_role_hijacking'
+  readonly constraints: readonly string[]  // e.g. 'preserve_user_intent', 'do_not_add_information'
+  readonly targetSegments: readonly string[]  // segment IDs with detections
+  readonly needsRemediation: boolean
 }
 ```
 
-- **type:** Threat category (aligned with ISL `PiDetection.pattern_type` where applicable).
-- **pattern:** Matched pattern text from the detection.
-- **position:** `{ start, end }` (inclusive start, exclusive end) in the original content.
-- **description:** Human-readable reason (e.g. confidence and pattern type).
+- **strategy:** Identifier for the consumer (e.g. `'AI_CLEANUP'`).
+- **goals:** Derived from ISL detection types (e.g. `prompt-injection` → `remove_prompt_injection`).
+- **constraints:** Fixed set (e.g. preserve_user_intent, do_not_add_information, do_not_change_language) that the cleanup must respect.
+- **targetSegments:** IDs of segments that have at least one detection; the SDK/AI agent should run cleanup on these segments only.
+- **needsRemediation:** `true` when there are target segments and `policy.remediation.enabled` is true.
 
-`Position` is shared (e.g. from `shared/types`): `{ start: number, end: number }`.
+If `!policy.remediation.enabled` or there are no segments with detections, `targetSegments` and `goals` are empty and `needsRemediation` is false.
 
 ### 3.6 DecisionReason
 
@@ -197,26 +188,19 @@ interface DecisionReason {
 }
 ```
 
-- **threshold:** The threshold that was decisive (warn or block).
-- **reason:** Text like “Risk score X exceeds block threshold Y” or “below warn threshold”, plus optional “N threat(s) detected.”
-
-### 3.7 RemovalPlan
-
-Describes whether and what to remove; execution is SDK’s responsibility.
+### 3.7 Display constants (SDK/UI)
 
 ```ts
-interface RemovalPlan {
-  readonly instructionsToRemove: readonly RemovedInstruction[]
-  readonly shouldRemove: boolean
-  readonly removalEnabled: boolean
+const ACTION_DISPLAY_COLORS: Record<AnomalyAction, string> = {
+  ALLOW: 'green',
+  WARN: 'yellow',
+  BLOCK: 'red'
 }
+
+function getActionDisplayColor(action: AnomalyAction): string
 ```
 
-- **instructionsToRemove:** Built from `islSignal.piDetection.detections` when `policy.removal.enabled` and `islSignal.hasThreats`; each detection is mapped to a `RemovedInstruction` (type from `pattern_type`, pattern, position, description with confidence).
-- **shouldRemove:** `instructionsToRemove.length > 0`.
-- **removalEnabled:** Copy of `policy.removal.enabled`.
-
-If `!policy.removal.enabled` or `!islSignal.hasThreats`, `instructionsToRemove` is empty and `shouldRemove` is false.
+Use `getActionDisplayColor(action)` for consistent presentation in logs or UI.
 
 ---
 
@@ -238,8 +222,7 @@ function resolveAgentAction(islSignal: ISLSignal, policy: AgentPolicy): AnomalyA
 function resolveAgentActionWithScore(islSignal: ISLSignal, policy: AgentPolicy): AnomalyScore
 ```
 
-- Calls `resolveAgentAction(islSignal, policy)` and wraps result with `islSignal.riskScore` in `createAnomalyScore(score, action)`.
-- Returns an `AnomalyScore` for auditing or downstream use.
+- Returns `{ score: islSignal.riskScore, action }` for auditing or downstream use.
 
 ### 4.3 buildDecisionReason
 
@@ -251,19 +234,18 @@ function buildDecisionReason(
 ): DecisionReason
 ```
 
-- Builds a `DecisionReason` with the action, risk score, the relevant threshold (warn or block), a short reason string, and threat/detection counts from `islSignal`.
-- Use after `resolveAgentAction` to get an auditable explanation.
+- Builds a `DecisionReason` with the action, risk score, the relevant threshold, a short reason string, and threat/detection counts from `islSignal`.
 
-### 4.4 buildRemovalPlan
+### 4.4 buildRemediationPlan
 
 ```ts
-function buildRemovalPlan(islSignal: ISLSignal, policy: AgentPolicy): RemovalPlan
+function buildRemediationPlan(islResult: ISLResult, policy: AgentPolicy): RemediationPlan
 ```
 
-- If `!policy.removal.enabled` → returns plan with empty list, `shouldRemove: false`, `removalEnabled: false`.
-- If `!islSignal.hasThreats` → returns plan with empty list, `shouldRemove: false`, `removalEnabled: true`.
-- Otherwise maps `islSignal.piDetection.detections` to `RemovedInstruction[]` (type from `pattern_type`, pattern, position, description including confidence) and returns plan with `shouldRemove: true` when the list is non-empty.
-- Does not modify content; only produces the plan.
+- Builds a **RemediationPlan** from the ISL result and policy.
+- If `!policy.remediation.enabled` → returns plan with `needsRemediation: false`, empty `goals` and `targetSegments`.
+- Otherwise, collects segment IDs that have `piDetection.detections.length > 0` into `targetSegments`, and derives `goals` from the detection `pattern_type` (e.g. `prompt-injection` → `remove_prompt_injection`). Uses fixed `constraints` (e.g. preserve_user_intent, do_not_add_information, do_not_change_language) and `strategy: 'AI_CLEANUP'`.
+- The SDK (or an AI agent) uses this plan to clean the content of the target segments; the core does **not** perform any removal.
 
 ### 4.5 buildAALLineage
 
@@ -275,8 +257,6 @@ function buildAALLineage(
 ```
 
 - Appends one lineage entry with step `'AAL'` and the given (or current) timestamp.
-- Used to extend the pipeline lineage (CSL → ISL → … → AAL) for audit trails.
-- `LineageEntry` and `createLineageEntry` / `addLineageEntry` are from CSL/shared.
 
 ---
 
@@ -293,77 +273,99 @@ const islResult = sanitize(cslResult)
 const islSignal = emitSignal(islResult)
 const policy: AgentPolicy = {
   thresholds: { warn: 0.3, block: 0.7 },
-  removal: { enabled: true }
+  remediation: { enabled: true }
 }
 const action = resolveAgentAction(islSignal, policy)
 // action === 'ALLOW' | 'WARN' | 'BLOCK' → SDK acts accordingly
 ```
 
-### 5.2 Action + audit reason + removal plan
+### 5.2 Action + audit reason + remediation plan
 
 ```ts
 import {
   resolveAgentAction,
   buildDecisionReason,
-  buildRemovalPlan
+  buildRemediationPlan
 } from '@ai-pip/core/aal'
 
 const action = resolveAgentAction(islSignal, policy)
 const reason = buildDecisionReason(action, islSignal, policy)
-const plan = buildRemovalPlan(islSignal, policy)
+const remediationPlan = buildRemediationPlan(islResult, policy)
 
 if (action === 'BLOCK') {
   // SDK: reject request, log reason.reason, reason.riskScore, reason.detectionCount
 }
-if (plan.shouldRemove && plan.removalEnabled) {
-  // SDK: remove plan.instructionsToRemove from prompt/segments (e.g. by position)
+if (remediationPlan.needsRemediation) {
+  // SDK or AI agent: run cleanup on remediationPlan.targetSegments
+  // using remediationPlan.goals and remediationPlan.constraints
 }
 ```
 
-### 5.3 AnomalyScore and lineage
+### 5.3 Full flow with remediation (SDK performs cleanup)
+
+When you have the ISL result and want the SDK (or an AI agent) to clean affected segments before sending content to the LLM:
 
 ```ts
 import {
-  resolveAgentActionWithScore,
-  buildAALLineage
+  resolveAgentAction,
+  buildDecisionReason,
+  buildRemediationPlan,
+  getActionDisplayColor
 } from '@ai-pip/core/aal'
 
-const anomaly = resolveAgentActionWithScore(islSignal, policy)
-// anomaly.score, anomaly.action
-const lineageWithAAL = buildAALLineage(islResult.lineage)
-// or use previous pipeline lineage; then attach to your audit payload
+const islResult = sanitize(cslResult)
+const islSignal = emitSignal(islResult)
+const action = resolveAgentAction(islSignal, policy)
+const reason = buildDecisionReason(action, islSignal, policy)
+const remediationPlan = buildRemediationPlan(islResult, policy)
+
+if (action === 'BLOCK') {
+  // Option: still run cleanup for audit, or block without cleanup
+  // remediationPlan.targetSegments, .goals, .constraints → pass to your AI cleanup tool
+}
+
+if (remediationPlan.needsRemediation) {
+  // SDK: call your AI cleanup tool with islResult.segments filtered by
+  // remediationPlan.targetSegments; instruct it to follow goals and constraints.
+  // Use the cleaned content for the prompt sent to the LLM.
+}
 ```
+
+`getActionDisplayColor(action)` returns `'green' | 'yellow' | 'red'` for ALLOW/WARN/BLOCK.
 
 ---
 
 ## 6. Threshold semantics and edge cases
 
 - **Boundary:** If `riskScore === policy.thresholds.warn`, result is WARN; if `riskScore === policy.thresholds.block`, result is BLOCK (≥ is used).
-- **Ordering:** Core does not enforce `warn < block`. If `block < warn`, BLOCK can still trigger when riskScore ≥ block; the WARN range may be empty or counterintuitive. Best practice: `0 ≤ warn < block ≤ 1`.
-- **Removal vs action:** Removal plan is independent of action. You can have `removal.enabled: true` and `shouldRemove: true` even when action is ALLOW (e.g. low aggregated score but some detections). The SDK can choose to remove only on WARN/BLOCK or always when `shouldRemove` is true, depending on product policy.
+- **Ordering:** Core does not enforce `warn < block`. Best practice: `0 ≤ warn < block ≤ 1`.
+- **Remediation vs action:** The remediation plan is independent of the action. You can have `remediation.enabled: true` and `needsRemediation: true` even when action is ALLOW. The SDK can choose to run cleanup only on WARN/BLOCK or whenever `needsRemediation` is true.
 
 ---
 
 ## 7. What the core does not do
 
-- **Does not** execute ALLOW/WARN/BLOCK (no network, no logging, no user notification).
-- **Does not** remove or modify prompt/segment content; it only produces `RemovalPlan`.
-- **Does not** access ISLResult or raw segments; only ISLSignal.
-- **Does not** enforce ordering of `warn`/`block` or validate policy beyond what is needed for the pure functions (e.g. `createAnomalyScore` and `createPolicyRule` validate their own arguments).
+- **Does not** execute ALLOW/WARN/BLOCK (no network, no logging, no user notification). It only computes the semantic action and reason.
+- **Does not** access ISLResult for *decisions*; decisions use only ISLSignal. The core accepts ISLResult only for `buildRemediationPlan`.
+- **Does not** perform content removal or cleanup. It produces a **RemediationPlan** (what to clean and where); the SDK or an AI agent performs the actual cleanup.
+- **Does not** enforce ordering of `warn`/`block` or validate `AgentPolicy` beyond what is needed for the pure functions.
 - **Does not** interpret `AgentPolicy.mode` or `explain`; those are for the SDK.
 
+**What the core does do:** It computes the action from the signal, builds a decision reason for audit, and builds a remediation plan (strategy, goals, constraints, target segment IDs) so the SDK or an AI tool can clean the content. All of this is pure and side-effect-free.
+
 ---
-
-
 
 ## 8. Summary
 
 | Item | Description |
 |------|-------------|
-| **Input** | ISLSignal only (riskScore, piDetection, hasThreats, timestamp) |
-| **Output** | AnomalyAction, AnomalyScore, DecisionReason, RemovalPlan, lineage |
-| **Policy** | AgentPolicy (thresholds, removal.enabled); optional PolicyRule for intent/role/scope semantics |
-| **Core role** | Pure decisions and plans; no execution |
-| **SDK role** | Execute action, apply removal, persist audit, call model |
+| **Input (decisions)** | ISLSignal (riskScore, piDetection, hasThreats, timestamp) |
+| **Input (remediation plan)** | ISLResult + AgentPolicy → buildRemediationPlan |
+| **Output** | AnomalyAction, AnomalyScore, DecisionReason, RemediationPlan, lineage |
+| **Policy** | AgentPolicy (thresholds, remediation.enabled); optional PolicyRule |
+| **Remediation** | buildRemediationPlan(islResult, policy) → plan with targetSegments, goals, constraints; SDK/AI performs cleanup |
+| **Display** | ACTION_DISPLAY_COLORS, getActionDisplayColor(action) |
+| **Core role** | Pure decisions and remediation plan; no I/O, no content removal |
+| **SDK role** | Execute action (block/log/allow), run remediation (e.g. AI cleanup), persist audit, apply CPE for integrity |
 
-AAL keeps the protocol’s layer separation (consume signal, not result), keeps the core side-effect-free, and leaves all execution and policy enforcement to the SDK.
+AAL keeps decisions on the signal contract, provides a remediation plan when ISLResult is available, and leaves both action enforcement and content cleanup to the SDK.

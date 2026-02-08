@@ -12,6 +12,7 @@ The **Instruction Sanitization Layer (ISL)** receives segmented content from CSL
 
 - **Differentiated sanitization**: Level depends on segment trust (TC → minimal, STC → moderate, UC → aggressive).
 - **Prompt-injection detection**: Identifies malicious patterns and builds risk scores and detections (PiDetection, PiDetectionResult).
+- **Configurable risk score**: The aggregated risk on the signal is computed from detections using a **strategy** (e.g. max confidence, severity plus volume, weighted by type). The strategy is chosen at emit time and stored in the signal metadata for auditability.
 - **Original preserved**: Each segment keeps `originalContent` and `sanitizedContent` for audit.
 - **Signal contract**: External consumers receive **ISLSignal**, not **ISLResult**. ISLResult is internal; ISLSignal is the semantic contract for AAL and the SDK.
 
@@ -29,16 +30,18 @@ CSLResult (from CSL)
     ↓
 sanitize(cslResult)
     ↓
-ISLResult (internal: segments, lineage, metadata)
+ISLResult (internal: segments, lineage, metadata; segments may have piDetection)
     ↓
-emitSignal(islResult)  [optional, for downstream layers]
+emitSignal(islResult, options?)  [optional, for downstream layers]
     ↓
-ISLSignal (external contract: riskScore, piDetection, hasThreats, timestamp)
+  Aggregates all segment detections → chooses risk score strategy → computes riskScore [0,1]
+    ↓
+ISLSignal (external contract: riskScore, piDetection, hasThreats, timestamp, metadata?.strategy)
     → consumed by AAL / SDK
 ```
 
-- **sanitize**: Single public entry for sanitization; returns **ISLResult**.
-- **emitSignal**: Converts **ISLResult** → **ISLSignal** so AAL (and others) consume only the signal.
+- **sanitize**: Single public entry for sanitization; returns **ISLResult**. Optionally runs threat detection per segment (`piDetection`).
+- **emitSignal**: Converts **ISLResult** → **ISLSignal**. Aggregates detections from all segments and computes **riskScore** using a configurable **risk score strategy** (default: `MAX_CONFIDENCE`). The strategy used is stored in `ISLSignal.metadata.strategy` for auditability.
 
 ---
 
@@ -54,11 +57,27 @@ ISLSignal (external contract: riskScore, piDetection, hasThreats, timestamp)
 
 | Function | Description |
 |----------|-------------|
-| **`emitSignal(islResult: ISLResult, timestamp?: number): ISLSignal`** | Builds the external signal from an internal ISLResult. Aggregates detections from all segments and computes risk score. |
-| **`createISLSignal(riskScore, piDetection, timestamp?): ISLSignal`** | Builds an ISLSignal from risk score, PiDetectionResult, and optional timestamp. |
+| **`emitSignal(islResult: ISLResult, options?: EmitSignalOptions \| number): ISLSignal`** | Builds the external signal from an internal ISLResult. Aggregates detections from all segments and computes risk score using the chosen **risk score strategy** (see §5). Second argument can be a **number** (timestamp) for backward compatibility, or an **options** object. |
+| **`createISLSignal(riskScore, piDetection, timestamp?, metadata?): ISLSignal`** | Builds an ISLSignal from risk score, PiDetectionResult, optional timestamp, and optional metadata (e.g. `strategy`). |
 | **`isHighRiskSignal(signal, threshold?)`** | `true` if `signal.riskScore >= threshold` (default 0.7). |
 | **`isMediumRiskSignal(signal, lowThreshold?, highThreshold?)`** | `true` if risk score is in [low, high) (defaults 0.3, 0.7). |
 | **`isLowRiskSignal(signal, threshold?)`** | `true` if `signal.riskScore < threshold` (default 0.3). |
+
+**EmitSignalOptions**
+
+```ts
+interface EmitSignalOptions {
+  readonly timestamp?: number
+  readonly riskScore?: {
+    readonly strategy: RiskScoreStrategy
+    readonly typeWeights?: Record<string, number>
+  }
+}
+```
+
+- **timestamp**: When the signal was emitted (default: `Date.now()`).
+- **riskScore.strategy**: Which risk score formula to use (default: `RiskScoreStrategy.MAX_CONFIDENCE`). Only registered strategies are allowed; see §5.
+- **riskScore.typeWeights**: Optional per-`pattern_type` weights for `WEIGHTED_BY_TYPE` strategy. Omitted or `undefined` uses default weights.
 
 ### 3.3 Internal process and lineage
 
@@ -100,13 +119,19 @@ interface ISLSignal {
   readonly piDetection: PiDetectionResult
   readonly hasThreats: boolean
   readonly timestamp: number
+  readonly metadata?: ISLSignalMetadata
+}
+
+interface ISLSignalMetadata {
+  readonly strategy: RiskScoreStrategy
 }
 ```
 
-- **riskScore**: Aggregated risk (0–1).
+- **riskScore**: Aggregated risk (0–1), computed from detections using the strategy in `metadata.strategy`.
 - **piDetection**: All detections and aggregated score.
 - **hasThreats**: Shortcut for “any detection” (`piDetection.detected`).
 - **timestamp**: Processing time for audit.
+- **metadata**: Optional; when present, **metadata.strategy** is the risk score strategy used to compute **riskScore** (auditability and reproducibility).
 
 ---
 
@@ -235,15 +260,62 @@ interface ISLResult {
 
 ---
 
-## 5. Exceptions
+## 5. Risk score strategies and calculators
+
+The **risk score** on the signal is derived solely from aggregated segment detections. The formula is chosen at **emit** time via a **strategy**; only registered strategies are allowed (no custom inline formulas), so results are auditable and reproducible.
+
+### 5.1 Strategy enum and calculator interface
+
+```ts
+enum RiskScoreStrategy {
+  MAX_CONFIDENCE = 'max-confidence',
+  SEVERITY_PLUS_VOLUME = 'severity-plus-volume',
+  WEIGHTED_BY_TYPE = 'weighted-by-type'
+}
+
+interface RiskScoreCalculator {
+  readonly strategy: RiskScoreStrategy
+  calculate(detections: readonly PiDetection[]): number
+}
+```
+
+- **RiskScoreStrategy**: The only allowed strategy identifiers. AAL and the SDK do **not** choose the formula; the caller of **emitSignal** (or sanitize, if extended) does.
+- **RiskScoreCalculator**: Pure, deterministic, no side effects. **calculate** returns a **raw** score; the caller (e.g. emitSignal) clamps it to [0, 1] with **normalizeRiskScore**.
+
+### 5.2 Registered calculators and formulas
+
+| Strategy | Description | Formula (raw) |
+|----------|-------------|----------------|
+| **MAX_CONFIDENCE** | Default; single highest confidence. | `max(d.confidence)` over all detections |
+| **SEVERITY_PLUS_VOLUME** | Highest confidence plus a small bump per extra detection. | `min(1, max(d.confidence) + 0.1 * (detections.length - 1))` |
+| **WEIGHTED_BY_TYPE** | Weight by `pattern_type`; unknown types use weight 1. | `min(1, max(d.confidence * (weights[d.pattern_type] ?? 1)))` |
+
+**Exports**
+
+- **maxConfidenceCalculator**, **severityPlusVolumeCalculator**: Fixed calculators for the first two strategies.
+- **weightedByTypeCalculator(weights: Record<string, number>): RiskScoreCalculator**: Returns a calculator for **WEIGHTED_BY_TYPE** with the given weights.
+- **defaultWeightedByTypeCalculator**: Pre-built calculator with **DEFAULT_TYPE_WEIGHTS** (all pattern types weight 1).
+- **DEFAULT_TYPE_WEIGHTS**: Frozen map of default weights (e.g. `prompt-injection`, `jailbreak`, `role_hijacking`, `script_like`, `hidden_text` → 1).
+- **getCalculator(strategy, typeWeights?): RiskScoreCalculator**: Returns the registered calculator for the strategy. For **WEIGHTED_BY_TYPE**, pass **typeWeights** to use custom weights; omit to use default weights.
+
+### 5.3 Rules (auditability and reproducibility)
+
+- The strategy is decided **once** (at emit time). It is stored on **ISLSignal.metadata.strategy**.
+- **No per-segment strategy**: The same strategy applies to the whole aggregated detection set.
+- **No dynamic strategy**: Strategy cannot change based on content or runtime conditions.
+- **No custom inline strategies**: Only the registered enum values and calculators are allowed.
+
+---
+
+## 6. Exceptions
 
 - **`SanitizationError`**: Thrown when sanitization fails (invalid content or validation error). Optional `cause` for chaining.
 
 ---
 
-## 6. Usage examples
+## 7. Usage examples
 
-### 6.1 Basic sanitization
+### 7.1 Basic sanitization
 
 ```typescript
 import { segment } from '@ai-pip/core/csl'
@@ -264,20 +336,47 @@ const islResult: ISLResult = sanitize(cslResult)
 // - sanitizationLevel: 'minimal' | 'moderate' | 'aggressive'
 ```
 
-### 6.2 Emit signal for AAL
+### 7.2 Emit signal for AAL
 
 ```typescript
 import { sanitize, emitSignal } from '@ai-pip/core/isl'
 import type { ISLSignal } from '@ai-pip/core/isl'
 
 const islResult = sanitize(cslResult)
+
+// Default: MAX_CONFIDENCE strategy; timestamp = Date.now()
 const islSignal: ISLSignal = emitSignal(islResult)
 
 // AAL consumes islSignal (not islResult):
 // - islSignal.riskScore, islSignal.piDetection, islSignal.hasThreats, islSignal.timestamp
+// - islSignal.metadata?.strategy (risk score strategy used)
 ```
 
-### 6.3 PiDetection and PiDetectionResult
+**With options (strategy and timestamp)**
+
+```typescript
+import { emitSignal, RiskScoreStrategy } from '@ai-pip/core/isl'
+
+// Explicit strategy; default MAX_CONFIDENCE if omitted
+const signal = emitSignal(islResult, {
+  timestamp: Date.now(),
+  riskScore: { strategy: RiskScoreStrategy.SEVERITY_PLUS_VOLUME }
+})
+// signal.metadata.strategy === 'severity-plus-volume'
+
+// WEIGHTED_BY_TYPE with custom type weights
+const signalWeighted = emitSignal(islResult, {
+  riskScore: {
+    strategy: RiskScoreStrategy.WEIGHTED_BY_TYPE,
+    typeWeights: { 'prompt-injection': 1.2, jailbreak: 1.0 }
+  }
+})
+
+// Backward compatibility: second argument as number = timestamp
+const signalLegacy = emitSignal(islResult, 1234567890)
+```
+
+### 7.3 PiDetection and PiDetectionResult
 
 ```typescript
 import {
@@ -306,7 +405,7 @@ console.log(getHighestConfidenceDetection(result))    // detection
 console.log(isHighConfidence(detection))              // true
 ```
 
-### 6.4 RiskScore and signal helpers
+### 7.4 RiskScore and signal helpers
 
 ```typescript
 import {
@@ -327,7 +426,7 @@ console.log(isHighRiskSignal(signal))   // true if riskScore >= 0.7
 console.log(isLowRiskSignal(signal))    // true if riskScore < 0.3
 ```
 
-### 6.5 Pattern matching
+### 7.5 Pattern matching
 
 ```typescript
 import {
@@ -357,7 +456,7 @@ if (match) {
 }
 ```
 
-### 6.6 Full pipeline: CSL → ISL → signal for AAL
+### 7.6 Full pipeline: CSL → ISL → signal for AAL
 
 ```typescript
 import { segment } from '@ai-pip/core/csl'
@@ -376,23 +475,55 @@ const policy: AgentPolicy = {
 const action = resolveAgentAction(islSignal, policy)  // 'ALLOW' | 'WARN' | 'BLOCK'
 ```
 
+### 7.7 Risk score strategies and getCalculator
+
+```typescript
+import {
+  getCalculator,
+  RiskScoreStrategy,
+  maxConfidenceCalculator,
+  severityPlusVolumeCalculator,
+  weightedByTypeCalculator,
+  DEFAULT_TYPE_WEIGHTS
+} from '@ai-pip/core/isl'
+import type { RiskScoreCalculator } from '@ai-pip/core/isl'
+
+// Get calculator for a strategy (used internally by emitSignal)
+const calc = getCalculator(RiskScoreStrategy.MAX_CONFIDENCE)
+const rawScore = calc.calculate(detections)  // 0 if empty; otherwise max(confidence)
+
+// SEVERITY_PLUS_VOLUME: max confidence + 0.1 per extra detection, capped at 1
+const calcSev = getCalculator(RiskScoreStrategy.SEVERITY_PLUS_VOLUME)
+
+// WEIGHTED_BY_TYPE: custom weights or default
+const calcWeighted = getCalculator(RiskScoreStrategy.WEIGHTED_BY_TYPE, {
+  'prompt-injection': 1.2,
+  jailbreak: 1
+})
+// Or use default weights:
+const calcDefaultWeighted = getCalculator(RiskScoreStrategy.WEIGHTED_BY_TYPE)
+
+// Direct use of calculators (same as getCalculator)
+const raw = maxConfidenceCalculator.calculate(detections)
+```
+
 ---
 
-## 7. Integration with other layers
+## 8. Integration with other layers
 
-### 7.1 Input (from CSL)
+### 8.1 Input (from CSL)
 
 - ISL receives **CSLResult**: segments with `id`, `content`, `trust`, `lineage`, etc.
 - Sanitization level is derived from each segment’s **trust** (TC → minimal, STC → moderate, UC → aggressive).
 
-### 7.2 Output (to CPE and AAL)
+### 8.2 Output (to CPE and AAL)
 
 - **To CPE**: The same **ISLResult** (segments, lineage, metadata) can be passed to the CPE layer for envelope creation.
 - **To AAL**: AAL must consume **ISLSignal** only. Use **`emitSignal(islResult)`** to obtain the signal; do not pass ISLResult to AAL.
 
 ---
 
-## 8. File layout (reference)
+## 9. File layout (reference)
 
 In `@ai-pip/core`, the ISL layer is organized as:
 
@@ -402,6 +533,10 @@ isl/
 ├── types.ts
 ├── sanitize.ts
 ├── signals.ts
+├── riskScore/
+│   ├── types.ts          # RiskScoreStrategy, RiskScoreCalculator
+│   ├── calculators.ts    # maxConfidence, severityPlusVolume, weightedByType
+│   └── index.ts         # getCalculator, exports
 ├── value-objects/
 │   ├── PiDetection.ts
 │   ├── PiDetectionResult.ts
@@ -421,15 +556,16 @@ isl/
 
 ---
 
-## 9. Summary
+## 10. Summary
 
 | Item | Description |
 |------|-------------|
 | **Input** | CSLResult (segments with trust and lineage) |
 | **Output** | ISLResult (internal), ISLSignal (external contract for AAL/SDK) |
-| **Main API** | sanitize, emitSignal, createISLSignal, signal helpers (isHighRiskSignal, etc.) |
+| **Main API** | sanitize, emitSignal (with optional risk score strategy), createISLSignal, signal helpers (isHighRiskSignal, etc.), getCalculator, RiskScoreStrategy |
+| **Risk score** | Derived from aggregated detections; strategy chosen at emit time (MAX_CONFIDENCE, SEVERITY_PLUS_VOLUME, WEIGHTED_BY_TYPE); stored in ISLSignal.metadata.strategy |
 | **Value objects** | RiskScore, PiDetection, PiDetectionResult, Pattern; ISLSegment, ISLResult, ISLSignal |
 | **Not in ISL** | PolicyRule, AnomalyScore, AnomalyAction, RemovedInstruction (see AAL) |
-| **Guarantees** | Original content preserved; lineage updated; fail-secure by trust level; signal contract for downstream layers |
+| **Guarantees** | Original content preserved; lineage updated; fail-secure by trust level; signal contract for downstream layers; auditable risk score strategy |
 
 This document describes the ISL layer as implemented in the current semantic core. For policy-based decisions (ALLOW/WARN/BLOCK) and instruction removal plans, see the **AAL (Agent Action Lock)** layer documentation.
